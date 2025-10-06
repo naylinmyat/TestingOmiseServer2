@@ -118,7 +118,7 @@ app.post("/charge-paid", async (req, res) => {
         {},
         {
           auth: {
-            username: "skey_test_61hro2yvsk5r124a8ai",
+            username: process.env.OMISE_SECRET_KEY,
             password: "",
           },
         }
@@ -196,7 +196,7 @@ app.post("/create-payout", async (req, res) => {
         {},
         {
           auth: {
-            username: "skey_test_61hro2yvsk5r124a8ai",
+            username: process.env.OMISE_SECRET_KEY,
             password: "",
           },
         }
@@ -216,7 +216,7 @@ app.post("/create-payout", async (req, res) => {
         {},
         {
           auth: {
-            username: "skey_test_61hro2yvsk5r124a8ai",
+            username: process.env.OMISE_SECRET_KEY,
             password: "",
           },
         }
@@ -228,7 +228,7 @@ app.post("/create-payout", async (req, res) => {
         {},
         {
           auth: {
-            username: "skey_test_61hro2yvsk5r124a8ai",
+            username: process.env.OMISE_SECRET_KEY,
             password: "",
           },
         }
