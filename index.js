@@ -201,16 +201,16 @@ app.post("/add-card-to-customer", async (req, res) => {
 
 /**
  * @description Lists all saved cards for a specific Omise Customer.
- * @param { omiseCustomerId: string }
+ * @param { omiseCusId: string }
  */
-app.get("/list-customer-cards/:omiseCustomerId", async (req, res) => {
+app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
   try {
-    const { omiseCustomerId } = req.params;
-    if (!omiseCustomerId) {
+    const { omiseCusId } = req.params;
+    if (!omiseCusId) {
       return res.status(400).json({ error: "omiseCustomerId is required." });
     }
 
-    const cards = await omise.customers.listCards(omiseCustomerId);
+    const cards = await omise.customers.listCards(omiseCusId);
     res.status(200).json(cards.data);
   } catch (error) {
     res.status(500).json({ error: error.message });
