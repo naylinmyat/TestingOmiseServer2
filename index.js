@@ -107,6 +107,151 @@ app.post("/create-charge", async (req, res) => {
   }
 });
 
+//---------------------------------------------------------------------------------------
+
+/**
+ * @description Creates an Omise Customer linked to Payni's user.
+ * @body { email: string, description: string (e.g., "PayNI User: user123") }
+ */
+app.post("/create-omise-customer", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
+    }
+
+    const customer = await omise.customers.create({
+      email,
+      description: `Customer for ${email}`,
+    });
+
+    // IMPORTANT: Save customer.id in your database, linked to your user.
+    res.status(200).json(customer);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/get-omise-customer-id/:email", async (req, res) => {
+  try {
+    // We expect the email in the query parameters for a GET request
+    const { email } = req.params;
+
+    if (!email) {
+      return res.status(400).json({
+        error:
+          "Customer email is required for search (e.g., /get-omise-customer-id?email=test@example.com).",
+      });
+    }
+
+    const searchResult = await omise.search.list({
+      scope: "customer",
+      query: email,
+      // Limit to 1, as email should be unique for a customer object
+      limit: 1,
+    });
+
+    const customers = searchResult.data;
+
+    if (customers.length > 0) {
+      const customerId = customers[0].id;
+
+      return res.status(200).json({
+        message: "Customer ID retrieved successfully.",
+        email: email,
+        customerId: customerId,
+      });
+    } else {
+      return res.status(404).json({
+        error: `Customer with email '${email}' not found. Ensure the email is correct and the customer exists.`,
+      });
+    }
+  } catch (error) {
+    console.error("Omise Search Error:", error);
+    res
+      .status(500)
+      .json({ error: `Failed to search customer: ${error.message}` });
+  }
+});
+
+/**
+ * @description Attaches a new card (from a token) to an existing Omise Customer.
+ * @body { omiseCustomerId: string, cardToken: string }
+ */
+app.post("/add-card-to-customer", async (req, res) => {
+  try {
+    const { omiseCustomerId, cardToken } = req.body;
+    if (!omiseCustomerId || !cardToken) {
+      return res
+        .status(400)
+        .json({ error: "omiseCustomerId and cardToken are required." });
+    }
+
+    // The update method attaches the new card token to the customer.
+    const customer = await omise.customers.update(omiseCustomerId, {
+      card: cardToken,
+    });
+
+    // The response will include the full customer object with the new card in the `cards` array.
+    res.status(200).json(customer.cards.data.slice(-1)[0]); // Return the newly added card
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @description Lists all saved cards for a specific Omise Customer.
+ * @param { omiseCustomerId: string }
+ */
+app.get("/list-customer-cards/:omiseCustomerId", async (req, res) => {
+  try {
+    const { omiseCustomerId } = req.params;
+    if (!omiseCustomerId) {
+      return res.status(400).json({ error: "omiseCustomerId is required." });
+    }
+
+    const cards = await omise.customers.listCards(omiseCustomerId);
+    res.status(200).json(cards.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @description Creates a charge using a saved card for a specific customer.
+ * @body { amount: number, payniUserId: string, currencyId: string, omiseCustomerId: string, cardId: string }
+ */
+
+app.post("/create-card-charge", async (req, res) => {
+  try {
+    const { amount, payniUserId, currencyId, omiseCustomerId, cardId } =
+      req.body;
+
+    if (!amount || amount <= 0 || !omiseCustomerId || !cardId) {
+      return res.status(400).json({
+        error: "Valid amount, omiseCustomerId, and cardId are required.",
+      });
+    }
+
+    const charge = await omise.charges.create({
+      amount, // in the smallest currency unit (e.g., 10000 for 100.00 THB)
+      currency: "thb",
+      customer: omiseCustomerId, // Omise Customer ID
+      card: cardId, // ID of the selected card
+      metadata: {
+        payniUserId: payniUserId,
+        currencyId: currencyId,
+      },
+    });
+
+    res.status(200).json(charge);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//---------------------------------------------------------------------------------------
+
 app.post("/charge-paid", async (req, res) => {
   if (req.method === "POST") {
     try {
