@@ -449,25 +449,51 @@ app.post("/create-payout", async (req, res) => {
 
 app.post("/create-charge-stripe", async (req, res) => {
   try {
-    const { amount, currencyId, payniUserId } = req.body;
+    const { amount, currencyId, payniUserId, email } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: "Valid amount is required." });
     }
 
-    const charge = await stripe.paymentIntents.create({
-      amount: amount,
+    // Step 1: Create PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
       currency: "thb",
       payment_method_types: ["promptpay"],
       metadata: {
-        payniUserId: payniUserId,
-        currencyId: currencyId,
+        payniUserId,
+        currencyId,
       },
     });
 
-    res.status(200).json(charge);
+    // Step 2: Confirm it to get QR Code
+    const confirmedIntent = await stripe.paymentIntents.confirm(
+      paymentIntent.id,
+      {
+        payment_method_data: {
+          type: "promptpay",
+          billing_details: {
+            email: email,
+          },
+        },
+      }
+    );
+
+    const qrDataSvg = confirmedIntent.next_action?.promptpay_display_qr_code?.image_url_svg;
+    const qrDataPng = confirmedIntent.next_action?.promptpay_display_qr_code?.image_url_png;
+    const data = confirmedIntent.next_action?.promptpay_display_qr_code?.data;
+    const hostedInstructionsUrl = confirmedIntent.next_action?.promptpay_display_qr_code?.hosted_instructions_url;
+
+    res.status(200).json({
+      id: confirmedIntent.id,
+      qrDataSvg,
+      qrDataPng,
+      data,
+      hostedInstructionsUrl,
+      amount: confirmedIntent.amount,
+    });
   } catch (error) {
-    console.error("Error creating payment intent:", error);
+    console.error("Error creating PromptPay charge:", error);
     res.status(500).json({ error: error.message });
   }
 });
