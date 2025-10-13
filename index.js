@@ -455,7 +455,7 @@ app.post("/create-charge-stripe", async (req, res) => {
       return res.status(400).json({ error: "Valid amount is required." });
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
+    const charge = await stripe.paymentIntents.create({
       amount: amount,
       currency: "thb",
       payment_method_types: ["promptpay"],
@@ -465,12 +465,7 @@ app.post("/create-charge-stripe", async (req, res) => {
       },
     });
 
-    const qrCodeUrl =
-      paymentIntent.next_action.promptpay_display_qr_code.image_url_png;
-
-    res.status(200).json({
-      qrCodeUrl: qrCodeUrl,
-    });
+    res.status(200).json(charge);
   } catch (error) {
     console.error("Error creating payment intent:", error);
     res.status(500).json({ error: error.message });
