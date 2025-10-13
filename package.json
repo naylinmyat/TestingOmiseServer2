@@ -18,7 +18,8 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.1",
     "nodemon": "^3.1.7",
-    "omise": "^0.12.1"
+    "omise": "^0.12.1",
+    "stripe": "^19.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"

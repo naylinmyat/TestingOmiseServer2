@@ -8,6 +8,7 @@ const omise = require("omise")({
   publicKey: process.env.OMISE_PUBLIC_KEY,
   secretKey: process.env.OMISE_SECRET_KEY,
 });
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 4000;
 
@@ -49,13 +50,11 @@ const verifyChargeStatus = async (chargeId) => {
   }
 };
 
-app.post("/webhook", async (req, res) => {
+app.post("/omise-webhook", async (req, res) => {
   const event = req.body;
 
-  // Log the received event
   console.log("Received event:", event);
 
-  // Check the event type
   if (event.object === "event") {
     if (event.data.status === "successful") {
       const chargeId = event.data.id;
@@ -76,6 +75,47 @@ app.post("/webhook", async (req, res) => {
 
   res.status(200).send("OK");
 });
+
+app.post(
+  "/stripe-webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+      console.log(`Stripe Webhook Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+
+      console.log("Stripe PaymentIntent was successful:", paymentIntent.id);
+
+      const transactionId = paymentIntent.id;
+      const amount = paymentIntent.amount / 100;
+      const payniUserId = paymentIntent.metadata.payniUserId;
+      const currencyId = paymentIntent.metadata.currencyId;
+
+      await sendToSupabase(
+        amount,
+        transactionId,
+        payniUserId,
+        false,
+        currencyId
+      );
+    } else {
+      console.log(`Unhandled Stripe event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  }
+);
 
 app.post("/create-charge", async (req, res) => {
   if (req.method === "POST") {
@@ -404,6 +444,36 @@ app.post("/create-payout", async (req, res) => {
   } else {
     res.setHeader("Allow", ["POST"]);
     res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+});
+
+app.post("/create-charge-stripe", async (req, res) => {
+  try {
+    const { amount, currencyId, payniUserId } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Valid amount is required." });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount,
+      currency: "thb",
+      payment_method_types: ["promptpay"],
+      metadata: {
+        payniUserId: payniUserId,
+        currencyId: currencyId,
+      },
+    });
+
+    const qrCodeUrl =
+      paymentIntent.next_action.promptpay_display_qr_code.image_url_png;
+
+    res.status(200).json({
+      qrCodeUrl: qrCodeUrl,
+    });
+  } catch (error) {
+    console.error("Error creating payment intent:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
