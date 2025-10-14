@@ -19,6 +19,15 @@ app.use(
 );
 app.use(bodyParser.json());
 
+// Only parse JSON for non-webhook routes
+app.use((req, res, next) => {
+  if (req.originalUrl === "/stripe-webhook") {
+    next(); // Skip JSON parsing for Stripe webhook
+  } else {
+    bodyParser.json()(req, res, next);
+  }
+});
+
 const sendToSupabase = async (
   amount,
   transactionId,
@@ -78,7 +87,7 @@ app.post("/omise-webhook", async (req, res) => {
 
 app.post(
   "/stripe-webhook",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "application/json" }), // keep raw body for signature verification
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -88,27 +97,20 @@ app.post(
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err) {
-      console.log(`Stripe Webhook Error: ${err.message}`);
+      console.error(`Stripe Webhook Error: ${err.message}`);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     if (event.type === "payment_intent.succeeded") {
       const paymentIntent = event.data.object;
-
-      console.log("Stripe PaymentIntent was successful:", paymentIntent.id);
+      console.log("Stripe PaymentIntent successful:", paymentIntent.id);
 
       const transactionId = paymentIntent.id;
       const amount = paymentIntent.amount / 100;
       const payniUserId = paymentIntent.metadata.payniUserId;
       const currencyId = paymentIntent.metadata.currencyId;
 
-      await sendToSupabase(
-        amount,
-        transactionId,
-        payniUserId,
-        false,
-        currencyId
-      );
+      await sendToSupabase(amount, transactionId, payniUserId, false, currencyId);
     } else {
       console.log(`Unhandled Stripe event type: ${event.type}`);
     }
