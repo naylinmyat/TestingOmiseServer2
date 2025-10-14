@@ -147,12 +147,6 @@ app.post("/create-charge", async (req, res) => {
   }
 });
 
-//---------------------------------------------------------------------------------------
-
-/**
- * @description Creates an Omise Customer linked to Payni's user.
- * @body { email: string, description: string (e.g., "PayNI User: user123") }
- */
 app.post("/create-omise-customer", async (req, res) => {
   try {
     const { email } = req.body;
@@ -165,7 +159,6 @@ app.post("/create-omise-customer", async (req, res) => {
       description: `Customer for ${email}`,
     });
 
-    // IMPORTANT: Save customer.id in your database, linked to your user.
     res.status(200).json(customer);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -174,7 +167,6 @@ app.post("/create-omise-customer", async (req, res) => {
 
 app.get("/get-omise-customer-id/:email", async (req, res) => {
   try {
-    // We expect the email in the query parameters for a GET request
     const { email } = req.params;
 
     if (!email) {
@@ -214,10 +206,6 @@ app.get("/get-omise-customer-id/:email", async (req, res) => {
   }
 });
 
-/**
- * @description Attaches a new card (from a token) to an existing Omise Customer.
- * @body { omiseCustomerId: string, cardToken: string }
- */
 app.post("/add-card-to-customer", async (req, res) => {
   try {
     const { omiseCustomerId, cardToken } = req.body;
@@ -239,10 +227,6 @@ app.post("/add-card-to-customer", async (req, res) => {
   }
 });
 
-/**
- * @description Lists all saved cards for a specific Omise Customer.
- * @param { omiseCusId: string }
- */
 app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
   try {
     const { omiseCusId } = req.params;
@@ -256,11 +240,6 @@ app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-/**
- * @description Creates a charge using a saved card for a specific customer.
- * @body { amount: number, payniUserId: string, currencyId: string, omiseCustomerId: string, cardId: string }
- */
 
 app.post("/create-card-charge", async (req, res) => {
   try {
@@ -289,8 +268,6 @@ app.post("/create-card-charge", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-//---------------------------------------------------------------------------------------
 
 app.post("/charge-paid", async (req, res) => {
   if (req.method === "POST") {
@@ -455,7 +432,7 @@ app.post("/create-charge-stripe", async (req, res) => {
       return res.status(400).json({ error: "Valid amount is required." });
     }
 
-    // Step 1: Create PaymentIntent
+    // Create PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: "thb",
@@ -466,7 +443,7 @@ app.post("/create-charge-stripe", async (req, res) => {
       },
     });
 
-    // Step 2: Confirm it to get QR Code
+    // Confirm it to get QR Code
     const confirmedIntent = await stripe.paymentIntents.confirm(
       paymentIntent.id,
       {
@@ -499,5 +476,5 @@ app.post("/create-charge-stripe", async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Webhook server running at http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
