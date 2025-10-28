@@ -27,6 +27,7 @@ app.use((req, res, next) => {
   }
 });
 
+//Don't need in Java
 const sendToSupabase = async (
   amount,
   transactionId,
@@ -47,7 +48,7 @@ const sendToSupabase = async (
   }
 };
 
-// Function to verify charge status
+// Function to verify charge status from OMISE
 const verifyChargeStatus = async (chargeId) => {
   try {
     const charge = await omise.charges.retrieve(chargeId);
@@ -58,6 +59,7 @@ const verifyChargeStatus = async (chargeId) => {
   }
 };
 
+//Need to change webhook flow in Java
 app.post("/omise-webhook", async (req, res) => {
   const event = req.body;
 
@@ -84,6 +86,7 @@ app.post("/omise-webhook", async (req, res) => {
   res.status(200).send("OK");
 });
 
+//Need to change webhook flow in Java
 app.post(
   "/stripe-webhook",
   express.raw({ type: "application/json" }), // keep raw body for signature verification
@@ -118,6 +121,7 @@ app.post(
   }
 );
 
+//API for Prompt Pay QR Generate from OMISE
 app.post("/create-charge", async (req, res) => {
   if (req.method === "POST") {
     try {
@@ -148,6 +152,7 @@ app.post("/create-charge", async (req, res) => {
   }
 });
 
+//API for create customer in OMISE (to use Cards Method)
 app.post("/create-omise-customer", async (req, res) => {
   try {
     const { email } = req.body;
@@ -166,6 +171,7 @@ app.post("/create-omise-customer", async (req, res) => {
   }
 });
 
+//API to get customerId from OMISE by email
 app.get("/get-omise-customer-id/:email", async (req, res) => {
   try {
     const { email } = req.params;
@@ -207,6 +213,7 @@ app.get("/get-omise-customer-id/:email", async (req, res) => {
   }
 });
 
+//API to store card info for specific customer
 app.post("/add-card-to-customer", async (req, res) => {
   try {
     const { omiseCustomerId, cardToken } = req.body;
@@ -228,6 +235,8 @@ app.post("/add-card-to-customer", async (req, res) => {
   }
 });
 
+
+//API to get stored cards list for specific customer
 app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
   try {
     const { omiseCusId } = req.params;
@@ -242,6 +251,7 @@ app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
   }
 });
 
+//API to cretae transaction by Card Method from OMISE
 app.post("/create-card-charge", async (req, res) => {
   try {
     const { amount, payniUserId, currencyId, omiseCustomerId, cardId } =
@@ -270,6 +280,9 @@ app.post("/create-card-charge", async (req, res) => {
   }
 });
 
+
+//API to change status to success for Payout in OMISE (now no need to implement),
+//This is automatic Payout, don't need to request to admin !
 app.post("/charge-paid", async (req, res) => {
   if (req.method === "POST") {
     try {
@@ -296,6 +309,7 @@ app.post("/charge-paid", async (req, res) => {
   }
 });
 
+//API to create receiver for Payout in OMISE (now no need to implement).
 app.post("/create-recipient", async (req, res) => {
   if (req.method === "POST") {
     try {
@@ -328,6 +342,7 @@ app.post("/create-recipient", async (req, res) => {
   }
 });
 
+//API to create Payout transaction in OMISE (now no need to implement).
 app.post("/create-payout", async (req, res) => {
   if (req.method === "POST") {
     let recipient = null;
@@ -425,6 +440,7 @@ app.post("/create-payout", async (req, res) => {
   }
 });
 
+//API for Prompt Pay QR Generate from STRIPE
 app.post("/create-charge-stripe", async (req, res) => {
   try {
     const { amount, currencyId, payniUserId, email } = req.body;
@@ -475,6 +491,8 @@ app.post("/create-charge-stripe", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+//Stripe Card Method already have in Java !
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
