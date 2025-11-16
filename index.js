@@ -584,7 +584,7 @@ app.post("/create-charge-hitpay", async (req, res) => {
     // Define the request body for HitPay
     const requestBody = {
       amount: amount.toString(),
-      currency: "thb",
+      currency: "THB",
       payment_methods: ["opn_prompt_pay"],
       generate_qr: true,
       name: payniUserId,
