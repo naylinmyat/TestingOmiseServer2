@@ -168,7 +168,7 @@ app.post("/hitpay-webhook", async (req, res) => {
 
   if (webhookPayload.status === "completed") {
     try {
-      const paymentId = webhookPayload.payment_id;
+      const paymentId = webhookPayload.payment_request_id;
       const amount = parseFloat(webhookPayload.amount);
       const currencyId = webhookPayload.reference_number;
       const payniUserId = webhookPayload.name;
@@ -603,9 +603,10 @@ app.post("/create-charge-hitpay", async (req, res) => {
 
     if (response.ok) {
       res.status(200).json({
-        paymentRequestId: charge.id,
+        id: charge.id,
         qrCodeData: charge.qr_code_data,
         status: charge.status,
+        amount: charge.amount,
       });
     } else {
       console.error("HitPay API Error:", charge);
