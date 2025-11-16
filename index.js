@@ -3,6 +3,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
+const crypto = require('crypto');
 const { supabase } = require("./supabaseClient");
 const omise = require("omise")({
   publicKey: process.env.OMISE_PUBLIC_KEY,
@@ -17,6 +18,8 @@ app.use(
     origin: "*",
   })
 );
+
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Only parse JSON for non-webhook routes
 app.use((req, res, next) => {
@@ -112,7 +115,13 @@ app.post(
       const payniUserId = paymentIntent.metadata.payniUserId;
       const currencyId = paymentIntent.metadata.currencyId;
 
-      await sendToSupabase(amount, transactionId, payniUserId, false, currencyId);
+      await sendToSupabase(
+        amount,
+        transactionId,
+        payniUserId,
+        false,
+        currencyId
+      );
     } else {
       console.log(`Unhandled Stripe event type: ${event.type}`);
     }
@@ -120,6 +129,65 @@ app.post(
     res.json({ received: true });
   }
 );
+
+//Validates the HitPay webhook payload using HMAC-SHA256.
+const validateWebhook = (payload) => {
+  const receivedHmac = payload.hmac;
+  const dataToSign = { ...payload };
+  delete dataToSign.hmac;
+
+  const keys = Object.keys(dataToSign).sort();
+  let signatureString = "";
+
+  for (const key of keys) {
+    signatureString += `${key}${dataToSign[key]}`;
+  }
+
+  const generatedHmac = crypto
+    .createHHmac("sha256", process.env.HITPAY_WEBHOOK_SALT)
+    .update(signatureString)
+    .digest("hex");
+
+  const isValid = generatedHmac === receivedHmac;
+  if (!isValid) {
+    console.error(
+      `[HMAC ERROR] Validation failed. Generated: ${generatedHmac}, Received: ${receivedHmac}`
+    );
+  }
+  return isValid;
+};
+
+//Need to change webhook flow in Java
+app.post("/hitpay-webhook", async (req, res) => {
+  const webhookPayload = req.body;
+
+  //Security Check: Validate the HMAC signature
+  if (!validateWebhook(webhookPayload)) {
+    return res.status(400).send("HMAC validation failed.");
+  }
+
+  if (webhookPayload.status === "completed") {
+    try {
+      const paymentId = webhookPayload.payment_id;
+      const amount = parseFloat(webhookPayload.amount);
+      const currencyId = webhookPayload.reference_number;
+      const payniUserId = webhookPayload.name;
+
+      console.log(`[WEBHOOK] Payment completed: ${paymentId}`);
+      await sendToSupabase(amount, paymentId, payniUserId, false, currencyId);
+    } catch (error) {
+      console.error(
+        "[WEBHOOK ERROR] Error processing successful payment:",
+        error
+      );
+      return res.status(200).send("OK, but internal error occurred.");
+    }
+  } else {
+    console.log(`[WEBHOOK] Received payment status: ${webhookPayload.status}`);
+  }
+
+  res.status(200).send("OK");
+});
 
 //API for Prompt Pay QR Generate from OMISE
 app.post("/create-charge", async (req, res) => {
@@ -235,7 +303,6 @@ app.post("/add-card-to-customer", async (req, res) => {
   }
 });
 
-
 //API to get stored cards list for specific customer
 app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
   try {
@@ -279,7 +346,6 @@ app.post("/create-card-charge", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 //API to change status to success for Payout in OMISE (now no need to implement),
 //This is automatic Payout, don't need to request to admin !
@@ -473,10 +539,14 @@ app.post("/create-charge-stripe", async (req, res) => {
       }
     );
 
-    const qrDataSvg = confirmedIntent.next_action?.promptpay_display_qr_code?.image_url_svg;
-    const qrDataPng = confirmedIntent.next_action?.promptpay_display_qr_code?.image_url_png;
+    const qrDataSvg =
+      confirmedIntent.next_action?.promptpay_display_qr_code?.image_url_svg;
+    const qrDataPng =
+      confirmedIntent.next_action?.promptpay_display_qr_code?.image_url_png;
     const data = confirmedIntent.next_action?.promptpay_display_qr_code?.data;
-    const hostedInstructionsUrl = confirmedIntent.next_action?.promptpay_display_qr_code?.hosted_instructions_url;
+    const hostedInstructionsUrl =
+      confirmedIntent.next_action?.promptpay_display_qr_code
+        ?.hosted_instructions_url;
 
     res.status(200).json({
       id: confirmedIntent.id,
@@ -492,7 +562,63 @@ app.post("/create-charge-stripe", async (req, res) => {
   }
 });
 
+// ------------------------------------------------
 //Stripe Card Method already have in Java !
+// ------------------------------------------------
+
+//API for Prompt Pay QR Generate from HitPay
+app.post("/create-charge-hitpay", async (req, res) => {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  try {
+    // Note: The amount is passed in the base unit (e.g., 123.00 THB), not in satang/cents.
+    const { amount, payniUserId, currencyId } = req.body;
+
+    if (!amount || parseFloat(amount) <= 0) {
+      return res.status(400).json({ error: "Valid amount is required." });
+    }
+
+    // Define the request body for HitPay
+    const requestBody = {
+      amount: amount.toString(),
+      currency: "thb",
+      payment_methods: ["opn_prompt_pay"],
+      generate_qr: true,
+      name: payniUserId,
+      reference_number: currencyId,
+    };
+
+    const response = await axios.post(process.env.HITPAY_API_URL, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-BUSINESS-API-KEY": process.env.HITPAY_API_KEY,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+
+    const charge = await response.json();
+
+    if (response.ok) {
+      res.status(200).json({
+        paymentRequestId: charge.id,
+        qrCodeData: charge.qr_code_data,
+        status: charge.status,
+      });
+    } else {
+      console.error("HitPay API Error:", charge);
+      res.status(response.status).json({
+        error:
+          charge.message || "Failed to create payment request with HitPay.",
+      });
+    }
+  } catch (error) {
+    console.error("Server error during HitPay charge creation:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
