@@ -607,6 +607,62 @@ app.post("/create-promptpay-charge-stripe", async (req, res) => {
   }
 });
 
+//API for PayNow QR Generate from STRIPE
+app.post("/create-paynow-charge-stripe", async (req, res) => {
+  try {
+    const { amount, currencyId, payniUserId, email } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Valid amount is required." });
+    }
+
+    // Create PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency: "sgd",
+      payment_method_types: ["paynow"],
+      metadata: {
+        payniUserId,
+        currencyId,
+      },
+    });
+
+    // Confirm it to get QR Code
+    const confirmedIntent = await stripe.paymentIntents.confirm(
+      paymentIntent.id,
+      {
+        payment_method_data: {
+          type: "paynow",
+          billing_details: {
+            email: email,
+          },
+        },
+      }
+    );
+
+    const qrDataSvg =
+      confirmedIntent.next_action?.paynow_display_qr_code?.image_url_svg;
+    const qrDataPng =
+      confirmedIntent.next_action?.paynow_display_qr_code?.image_url_png;
+    const data = confirmedIntent.next_action?.paynow_display_qr_code?.data;
+    const hostedInstructionsUrl =
+      confirmedIntent.next_action?.paynow_display_qr_code
+        ?.hosted_instructions_url;
+
+    res.status(200).json({
+      id: confirmedIntent.id,
+      qrDataSvg,
+      qrDataPng,
+      data,
+      hostedInstructionsUrl,
+      amount: confirmedIntent.amount,
+    });
+  } catch (error) {
+    console.error("Error creating PayNow charge:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ------------------------------------------------
 //Stripe Card Method already have in Java !
 // ------------------------------------------------
