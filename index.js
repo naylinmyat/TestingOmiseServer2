@@ -3,7 +3,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
-const crypto = require('crypto');
+const crypto = require("crypto");
 const { supabase } = require("./supabaseClient");
 const omise = require("omise")({
   publicKey: process.env.OMISE_PUBLIC_KEY,
@@ -567,7 +567,7 @@ app.post("/create-charge-stripe", async (req, res) => {
 // ------------------------------------------------
 
 //API for Prompt Pay QR Generate from HitPay
-app.post("/create-charge-hitpay", async (req, res) => {
+app.post("/create-promptpay-charge-hitpay", async (req, res) => {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
@@ -599,25 +599,27 @@ app.post("/create-charge-hitpay", async (req, res) => {
       },
     });
 
-    const charge = await response.json();
+    const charge = response.data;
 
-    if (response.ok) {
-      res.status(200).json({
-        id: charge.id,
-        qrCodeData: charge.qr_code_data,
-        status: charge.status,
-        amount: charge.amount,
-      });
-    } else {
-      console.error("HitPay API Error:", charge);
-      res.status(response.status).json({
-        error:
-          charge.message || "Failed to create payment request with HitPay.",
-      });
-    }
+    res.status(200).json({
+      id: charge.id,
+      qrCodeData: charge.qr_code_data,
+      status: charge.status,
+      amount: charge.amount,
+    });
   } catch (error) {
-    console.error("Server error during HitPay charge creation:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    const status = error.response ? error.response.status : 500;
+    const errorMessage = error.response
+      ? error.response.data.message ||
+        error.response.data.error ||
+        "Failed to create payment request for PromptPay with HitPay."
+      : error.message;
+
+    console.error(
+      "Server error during HitPay PromptPay charge creation:",
+      errorMessage
+    );
+    res.status(status).json({ error: errorMessage });
   }
 });
 
@@ -654,25 +656,27 @@ app.post("/create-paynow-charge-hitpay", async (req, res) => {
       },
     });
 
-    const charge = await response.json();
+    const charge = response.data;
 
-    if (response.ok) {
-      res.status(200).json({
-        id: charge.id,
-        qrCodeData: charge.qr_code_data,
-        status: charge.status,
-        amount: charge.amount,
-      });
-    } else {
-      console.error("HitPay API Error:", charge);
-      res.status(response.status).json({
-        error:
-          charge.message || "Failed to create payment request for PayNow with HitPay.",
-      });
-    }
+    res.status(200).json({
+      id: charge.id,
+      qrCodeData: charge.qr_code_data,
+      status: charge.status,
+      amount: charge.amount,
+    });
   } catch (error) {
-    console.error("Server error during HitPay PayNow charge creation:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    const status = error.response ? error.response.status : 500;
+    const errorMessage = error.response
+      ? error.response.data.message ||
+        error.response.data.error ||
+        "Failed to create payment request for PayNow with HitPay."
+      : error.message;
+
+    console.error(
+      "Server error during HitPay PayNow charge creation:",
+      errorMessage
+    );
+    res.status(status).json({ error: errorMessage });
   }
 });
 
