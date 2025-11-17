@@ -150,7 +150,7 @@ const validateWebhook = (rawBody, receivedSignature) => {
   }
 
   // 1. Compute HMAC using SHA-256, the SALT key, and the raw JSON body
-  const hmacGenerator = crypto.createHmac("sha256", HITPAY_SALT);
+  const hmacGenerator = crypto.createHmac("sha256", process.env.HITPAY_WEBHOOK_SALT);
   const generatedSignature = hmacGenerator
     .update(rawBody, "utf-8")
     .digest("hex");
