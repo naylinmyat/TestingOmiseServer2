@@ -252,7 +252,7 @@ app.post("/create-paynow-charge-omise", async (req, res) => {
         },
         currency: "sgd",
         source: {
-          type: "paynow_qr",
+          type: "paynow",
         },
       });
       res.status(200).json(charge);
