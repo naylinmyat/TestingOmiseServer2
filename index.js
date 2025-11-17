@@ -182,7 +182,7 @@ app.post("/hitpay-webhook", async (req, res) => {
 
   if (webhookPayload.status === "completed") {
     try {
-      const paymentId = webhookPayload.payment[0].id;
+      const paymentId = webhookPayload.payments[0].id;
       const amount = parseFloat(webhookPayload.amount);
       const currencyId = webhookPayload.reference_number;
       const payniUserId = webhookPayload.name;
