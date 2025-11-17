@@ -204,7 +204,7 @@ app.post("/hitpay-webhook", async (req, res) => {
 });
 
 //API for Prompt Pay QR Generate from OMISE
-app.post("/create-charge", async (req, res) => {
+app.post("/create-promptpay-charge-omise", async (req, res) => {
   if (req.method === "POST") {
     try {
       const { amount, payniUserId, currencyId } = req.body;
@@ -222,6 +222,37 @@ app.post("/create-charge", async (req, res) => {
         currency: "thb",
         source: {
           type: "promptpay",
+        },
+      });
+      res.status(200).json(charge);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  } else {
+    res.setHeader("Allow", ["POST"]);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+});
+
+//API for PayNow QR Generate from OMISE
+app.post("/create-paynow-charge-omise", async (req, res) => {
+  if (req.method === "POST") {
+    try {
+      const { amount, payniUserId, currencyId } = req.body;
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Valid amount is required." });
+      }
+
+      const charge = await omise.charges.create({
+        amount: amount,
+        metadata: {
+          payniUserId: payniUserId,
+          currencyId: currencyId,
+        },
+        currency: "sgd",
+        source: {
+          type: "paynow",
         },
       });
       res.status(200).json(charge);
@@ -521,7 +552,7 @@ app.post("/create-payout", async (req, res) => {
 });
 
 //API for Prompt Pay QR Generate from STRIPE
-app.post("/create-charge-stripe", async (req, res) => {
+app.post("/create-promptpay-charge-stripe", async (req, res) => {
   try {
     const { amount, currencyId, payniUserId, email } = req.body;
 
