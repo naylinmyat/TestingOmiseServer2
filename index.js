@@ -132,29 +132,32 @@ app.post(
 
 //Validates the HitPay webhook payload using HMAC-SHA256.
 const validateWebhook = (payload) => {
-  const receivedHmac = payload.hmac;
-  const dataToSign = { ...payload };
-  delete dataToSign.hmac;
+    console.log("WebHookPayload : ", payload);
+    
+    const receivedHmac = payload.hmac;
 
-  const keys = Object.keys(dataToSign).sort();
-  let signatureString = "";
+    if (!receivedHmac) {
+        console.error("[HMAC ERROR] Validation failed. Received: undefined");
+        return false;
+    }
 
-  for (const key of keys) {
-    signatureString += `${key}${dataToSign[key]}`;
-  }
+    const dataToSign = { ...payload };
+    delete dataToSign.hmac;
 
-  const generatedHmac = crypto
-    .createHmac("sha256", process.env.HITPAY_WEBHOOK_SALT)
-    .update(signatureString)
-    .digest("hex");
+    const source = [];
+    Object.keys(dataToSign).sort().forEach((key) => {
+        source.push(`${key}${dataToSign[key]}`);
+    });
+    const payloadString = source.join("");
 
-  const isValid = generatedHmac === receivedHmac;
-  if (!isValid) {
-    console.error(
-      `[HMAC ERROR] Validation failed. Generated: ${generatedHmac}, Received: ${receivedHmac}`
-    );
-  }
-  return isValid;
+    const hmacGenerator = crypto.createHmac('sha256', HITPAY_SALT);
+    const generatedHmac = hmacGenerator.update(Buffer.from(payloadString, 'utf-8')).digest("hex");
+
+    const isValid = generatedHmac === receivedHmac;
+    if (!isValid) {
+        console.error(`[HMAC ERROR] Validation failed. Generated: ${generatedHmac}, Received: ${receivedHmac}`);
+    }
+    return isValid;
 };
 
 //Need to change webhook flow in Java
