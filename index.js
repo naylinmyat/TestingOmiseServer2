@@ -19,16 +19,26 @@ app.use(
   })
 );
 
+app.use(
+  bodyParser.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+    // Ensure the raw body is always saved, even for Stripe's specialized webhook
+    type: (req) => req.headers['content-type'] === 'application/json' || req.originalUrl === "/stripe-webhook" || req.originalUrl === "/hitpay-webhook",
+  })
+);
+
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Only parse JSON for non-webhook routes
-app.use((req, res, next) => {
-  if (req.originalUrl === "/stripe-webhook") {
-    next(); // Skip JSON parsing for Stripe webhook
-  } else {
-    bodyParser.json()(req, res, next);
-  }
-});
+// app.use((req, res, next) => {
+//   if (req.originalUrl === "/stripe-webhook") {
+//     next(); // Skip JSON parsing for Stripe webhook
+//   } else {
+//     bodyParser.json()(req, res, next);
+//   }
+// });
 
 //Don't need in Java
 const sendToSupabase = async (
@@ -100,7 +110,7 @@ app.post(
     let event;
 
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
     } catch (err) {
       console.error(`Stripe Webhook Error: ${err.message}`);
       return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -131,43 +141,44 @@ app.post(
 );
 
 //Validates the HitPay webhook payload using HMAC-SHA256.
-const validateWebhook = (payload) => {
-    console.log("WebHookPayload : ", payload);
-    
-    const receivedHmac = payload.hmac;
+const validateWebhook = (rawBody, receivedSignature) => {
+  if (!receivedSignature || !rawBody) {
+    console.error(
+      "[HMAC ERROR] Validation failed: Missing signature or raw body."
+    );
+    return false;
+  }
 
-    if (!receivedHmac) {
-        console.error("[HMAC ERROR] Validation failed. Received: undefined");
-        return false;
-    }
+  // 1. Compute HMAC using SHA-256, the SALT key, and the raw JSON body
+  const hmacGenerator = crypto.createHmac("sha256", HITPAY_SALT);
+  const generatedSignature = hmacGenerator
+    .update(rawBody, "utf-8")
+    .digest("hex");
 
-    const dataToSign = { ...payload };
-    delete dataToSign.hmac;
+  // 2. Compare the generated signature with the signature from the header
+  const isValid = generatedSignature === receivedSignature;
 
-    const source = [];
-    Object.keys(dataToSign).sort().forEach((key) => {
-        source.push(`${key}${dataToSign[key]}`);
-    });
-    const payloadString = source.join("");
-
-    const hmacGenerator = crypto.createHmac('sha256', HITPAY_SALT);
-    const generatedHmac = hmacGenerator.update(Buffer.from(payloadString, 'utf-8')).digest("hex");
-
-    const isValid = generatedHmac === receivedHmac;
-    if (!isValid) {
-        console.error(`[HMAC ERROR] Validation failed. Generated: ${generatedHmac}, Received: ${receivedHmac}`);
-    }
-    return isValid;
+  if (!isValid) {
+    console.error(
+      `[HMAC ERROR] Validation failed. Generated: ${generatedSignature}, Received: ${receivedSignature}`
+    );
+  }
+  return isValid;
 };
 
 //Need to change webhook flow in Java
 app.post("/hitpay-webhook", async (req, res) => {
-  const webhookPayload = req.body;
+  // Get signature from header (case-insensitive)
+  const hitpaySignature = req.headers["hitpay-signature"];
 
-  //Security Check: Validate the HMAC signature
-  if (!validateWebhook(webhookPayload)) {
-    return res.status(400).send("HMAC validation failed.");
+  // Validate HMAC using the raw body captured earlier
+  if (!validateWebhook(req.rawBody, hitpaySignature)) {
+    return res
+      .status(400)
+      .send("HMAC validation failed or signature/body missing.");
   }
+
+  const webhookPayload = req.body;
 
   if (webhookPayload.status === "completed") {
     try {
