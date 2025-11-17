@@ -9,7 +9,12 @@ const omise = require("omise")({
   publicKey: process.env.OMISE_PUBLIC_KEY,
   secretKey: process.env.OMISE_SECRET_KEY,
 });
+const omiseSG = require("omise")({
+  publicKey: process.env.OMISE_PUBLIC_KEY_SG,
+  secretKey: process.env.OMISE_SECRET_KEY_SG,
+});
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const stripeSG = require("stripe")(process.env.STRIPE_SECRET_KEY_SG);
 const app = express();
 const port = process.env.PORT || 4000;
 
@@ -72,6 +77,17 @@ const verifyChargeStatus = async (chargeId) => {
   }
 };
 
+// Function to verify charge status from OMISE SG Region
+const verifyChargeStatusForSG = async (chargeId) => {
+  try {
+    const charge = await omiseSG.charges.retrieve(chargeId);
+    return charge.status === "successful";
+  } catch (error) {
+    console.log("Error retrieving charge:", error);
+    return false;
+  }
+};
+
 //Need to change webhook flow in Java
 app.post("/omise-webhook", async (req, res) => {
   const event = req.body;
@@ -100,6 +116,33 @@ app.post("/omise-webhook", async (req, res) => {
 });
 
 //Need to change webhook flow in Java
+app.post("/omise-webhook-sg", async (req, res) => {
+  const event = req.body;
+
+  console.log("Received event:", event);
+
+  if (event.object === "event") {
+    if (event.data.status === "successful") {
+      const chargeId = event.data.id;
+      const amount = event.data.amount / 100;
+      const payniUserId = event.data.metadata.payniUserId;
+      const currencyId = event.data.metadata.currencyId;
+      const isSuccessful = await verifyChargeStatusForSG(chargeId);
+      if (isSuccessful) {
+        console.log("Charge is successful:", event.data);
+        await sendToSupabase(amount, chargeId, payniUserId, false, currencyId);
+      } else {
+        console.log("Charge is not successful:", chargeId);
+      }
+    } else {
+      console.log("Charge:", event.data);
+    }
+  }
+
+  res.status(200).send("OK");
+});
+
+//Need to change webhook flow in Java
 app.post(
   "/stripe-webhook",
   express.raw({ type: "application/json" }), // keep raw body for signature verification
@@ -111,6 +154,47 @@ app.post(
 
     try {
       event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err) {
+      console.error(`Stripe Webhook Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+      console.log("Stripe PaymentIntent successful:", paymentIntent.id);
+
+      const transactionId = paymentIntent.id;
+      const amount = paymentIntent.amount / 100;
+      const payniUserId = paymentIntent.metadata.payniUserId;
+      const currencyId = paymentIntent.metadata.currencyId;
+
+      await sendToSupabase(
+        amount,
+        transactionId,
+        payniUserId,
+        false,
+        currencyId
+      );
+    } else {
+      console.log(`Unhandled Stripe event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  }
+);
+
+//Need to change webhook flow in Java
+app.post(
+  "/stripe-webhook-sg",
+  express.raw({ type: "application/json" }), // keep raw body for signature verification
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET_SG;
+
+    let event;
+
+    try {
+      event = stripeSG.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
     } catch (err) {
       console.error(`Stripe Webhook Error: ${err.message}`);
       return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -244,7 +328,7 @@ app.post("/create-paynow-charge-omise", async (req, res) => {
         return res.status(400).json({ error: "Valid amount is required." });
       }
 
-      const charge = await omise.charges.create({
+      const charge = await omiseSG.charges.create({
         amount: amount,
         metadata: {
           payniUserId: payniUserId,
@@ -617,7 +701,7 @@ app.post("/create-paynow-charge-stripe", async (req, res) => {
     }
 
     // Create PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntent = await stripeSG.paymentIntents.create({
       amount,
       currency: "sgd",
       payment_method_types: ["paynow"],
@@ -628,7 +712,7 @@ app.post("/create-paynow-charge-stripe", async (req, res) => {
     });
 
     // Confirm it to get QR Code
-    const confirmedIntent = await stripe.paymentIntents.confirm(
+    const confirmedIntent = await stripeSG.paymentIntents.confirm(
       paymentIntent.id,
       {
         payment_method_data: {
