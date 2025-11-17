@@ -30,20 +30,15 @@ app.use(
       req.rawBody = buf;
     },
     // Ensure the raw body is always saved, even for Stripe's specialized webhook
-    type: (req) => req.headers['content-type'] === 'application/json' || req.originalUrl === "/stripe-webhook" || req.originalUrl === "/hitpay-webhook",
+    type: (req) =>
+      req.headers["content-type"] === "application/json" ||
+      req.originalUrl === "/stripe-webhook" ||
+      req.originalUrl === "/stripe-webhook-sg" ||
+      req.originalUrl === "/hitpay-webhook",
   })
 );
 
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Only parse JSON for non-webhook routes
-// app.use((req, res, next) => {
-//   if (req.originalUrl === "/stripe-webhook") {
-//     next(); // Skip JSON parsing for Stripe webhook
-//   } else {
-//     bodyParser.json()(req, res, next);
-//   }
-// });
 
 //Don't need in Java
 const sendToSupabase = async (
@@ -234,7 +229,10 @@ const validateWebhook = (rawBody, receivedSignature) => {
   }
 
   // 1. Compute HMAC using SHA-256, the SALT key, and the raw JSON body
-  const hmacGenerator = crypto.createHmac("sha256", process.env.HITPAY_WEBHOOK_SALT);
+  const hmacGenerator = crypto.createHmac(
+    "sha256",
+    process.env.HITPAY_WEBHOOK_SALT
+  );
   const generatedSignature = hmacGenerator
     .update(rawBody, "utf-8")
     .digest("hex");
@@ -490,6 +488,32 @@ app.post("/charge-paid", async (req, res) => {
         {
           auth: {
             username: process.env.OMISE_SECRET_KEY,
+            password: "",
+          },
+        }
+      );
+      res.status(200).json("Success");
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  } else {
+    res.setHeader("Allow", ["POST"]);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+});
+
+app.post("/charge-paid-sg", async (req, res) => {
+  if (req.method === "POST") {
+    try {
+      const { chargeId } = req.body;
+
+      // Mark the payout as sent
+      const markAsPaid = await axios.post(
+        `https://api.omise.co/charges/${chargeId}/mark_as_paid`,
+        {},
+        {
+          auth: {
+            username: process.env.OMISE_SECRET_KEY_SG,
             password: "",
           },
         }
