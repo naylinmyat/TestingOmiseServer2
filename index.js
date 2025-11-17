@@ -144,7 +144,7 @@ const validateWebhook = (payload) => {
   }
 
   const generatedHmac = crypto
-    .createHHmac("sha256", process.env.HITPAY_WEBHOOK_SALT)
+    .createHmac("sha256", process.env.HITPAY_WEBHOOK_SALT)
     .update(signatureString)
     .digest("hex");
 
