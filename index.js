@@ -621,6 +621,61 @@ app.post("/create-charge-hitpay", async (req, res) => {
   }
 });
 
+//API for PayNow QR Generate from HitPay
+app.post("/create-paynow-charge-hitpay", async (req, res) => {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  try {
+    // Note: The amount is passed in the base unit (e.g., 123.00 SGD), not in cents.
+    const { amount, payniUserId, currencyId } = req.body;
+
+    if (!amount || parseFloat(amount) <= 0) {
+      return res.status(400).json({ error: "Valid amount is required." });
+    }
+
+    // Define the request body for HitPay
+    const requestBody = {
+      amount: amount.toString(),
+      currency: "sgd",
+      payment_methods: ["paynow_online"],
+      generate_qr: true,
+      name: payniUserId,
+      reference_number: currencyId,
+    };
+
+    const response = await axios.post(process.env.HITPAY_API_URL, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-BUSINESS-API-KEY": process.env.HITPAY_API_KEY,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+
+    const charge = await response.json();
+
+    if (response.ok) {
+      res.status(200).json({
+        id: charge.id,
+        qrCodeData: charge.qr_code_data,
+        status: charge.status,
+        amount: charge.amount,
+      });
+    } else {
+      console.error("HitPay API Error:", charge);
+      res.status(response.status).json({
+        error:
+          charge.message || "Failed to create payment request for PayNow with HitPay.",
+      });
+    }
+  } catch (error) {
+    console.error("Server error during HitPay PayNow charge creation:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
 });
