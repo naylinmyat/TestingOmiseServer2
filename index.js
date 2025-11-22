@@ -889,6 +889,55 @@ app.post("/create-paynow-charge-hitpay", async (req, res) => {
   }
 });
 
+// API for Card Payment from HitPay
+app.post("/create-card-charge-hitpay", async (req, res) => {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+  try {
+    const { amount, payniUserId, currencyCode, currencyId, email, redirectUrl } = req.body;
+    if (!amount || parseFloat(amount) <= 0 || !redirectUrl) {
+      return res.status(400).json({ error: "Valid amount and redirect URL are required." });
+    }
+    
+    // HitPay creates a hosted checkout link for cards to ensure PCI compliance.
+    const requestBody = {
+      amount: amount.toString(),
+      currency: currencyCode.toUpperCase(),
+      payment_methods: ["card"],
+      email: email,
+      name: payniUserId,
+      reference_number: currencyId,
+      redirect_url: redirectUrl, // Where HitPay redirects customer after payment
+    };
+
+    const response = await axios.post(process.env.HITPAY_API_URL, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-BUSINESS-API-KEY": process.env.HITPAY_API_KEY,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+    const charge = response.data;
+    
+    // The response includes the URL for the hosted checkout page
+    res.status(200).json({
+      id: charge.id,
+      status: charge.status,
+      hosted_url: charge.url, // Redirect customer to this URL
+      amount: charge.amount,
+    });
+  } catch (error) {
+    const status = error.response ? error.response.status : 500;
+    const errorMessage = error.response
+      ? error.response.data.message || error.response.data.error || "Failed to create payment request for Cards with HitPay."
+      : error.message;
+    console.error("Server error during HitPay Card charge creation:", errorMessage);
+    res.status(status).json({ error: errorMessage });
+  }
+});
+
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
 });
