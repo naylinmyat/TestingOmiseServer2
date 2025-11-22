@@ -448,7 +448,7 @@ app.get("/list-customer-cards/:omiseCusId", async (req, res) => {
 //API to cretae transaction by Card Method from OMISE
 app.post("/create-card-charge", async (req, res) => {
   try {
-    const { amount, payniUserId, currencyId, omiseCustomerId, cardId } =
+    const { amount, payniUserId, currencyCode, currencyId, omiseCustomerId, cardId } =
       req.body;
 
     if (!amount || amount <= 0 || !omiseCustomerId || !cardId) {
@@ -459,7 +459,7 @@ app.post("/create-card-charge", async (req, res) => {
 
     const charge = await omise.charges.create({
       amount, // in the smallest currency unit (e.g., 10000 for 100.00 THB)
-      currency: "thb",
+      currency: currencyCode,
       customer: omiseCustomerId, // Omise Customer ID
       card: cardId, // ID of the selected card
       metadata: {
