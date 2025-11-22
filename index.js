@@ -457,6 +457,8 @@ app.post("/create-card-charge", async (req, res) => {
       });
     }
 
+    console.log("currencyCode: ", currencyCode);
+
     const charge = await omise.charges.create({
       amount, // in the smallest currency unit (e.g., 10000 for 100.00 THB)
       currency: currencyCode,
@@ -471,6 +473,7 @@ app.post("/create-card-charge", async (req, res) => {
     res.status(200).json(charge);
   } catch (error) {
     res.status(500).json({ error: error.message });
+    console.log("currencyCode: ", error.message);
   }
 });
 
